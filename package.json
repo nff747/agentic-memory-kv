@@ -19,5 +19,12 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
+  },
+  "author": "nff747 <https://github.com/nff747>",
+  "homepage": "https://github.com/nff747",
+  "funding": "https://github.com/nff747",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nff747/agentic-memory-kv.git"
   }
 }
