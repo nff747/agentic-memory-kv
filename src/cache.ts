@@ -123,9 +123,11 @@ export class AgenticMemoryKV {
     this.lock();
     try {
       let idx = this.findKey(key);
+      let isNew = false;
       if (idx !== Number(NULL)) {
         this.unlink(idx);
       } else {
+        isNew = true;
         idx = this.findFree();
         if (idx === Number(NULL)) {
           // Evict tail
@@ -146,11 +148,9 @@ export class AgenticMemoryKV {
         
         this.pushFront(idx);
         
-        let newSize = 0n;
-        for (let i = 0; i < this.capacity; i++) {
-            if (this.getNode(i, N_KEY) !== NULL) newSize++;
+        if (isNew) {
+          Atomics.add(this.header, H_SIZE, 1n);
         }
-        this.header[H_SIZE] = newSize;
       }
     } finally {
       this.unlock();
