@@ -1,0 +1,16 @@
+{
+  "name": "agentic-memory-kv",
+  "version": "1.0.0",
+  "description": "Zero-dependency edge-compatible LRU/TTL store designed for AI agent short-term memory",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "vitest": "^0.34.6"
+  }
+}
