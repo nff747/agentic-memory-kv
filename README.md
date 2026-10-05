@@ -3,7 +3,7 @@
 Zero-dependency, multi-threaded LRU & TTL cache backed by `SharedArrayBuffer` and `Atomics`. Engineered for high-throughput AI agent memory with zero serialization overhead across Node.js Worker Threads and Web Workers.
 
 [![npm version](https://img.shields.io/badge/npm-v1.0.0-blue.svg?style=flat-square)](https://www.npmjs.com/package/agentic-memory-kv)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE)
 
 ## Why agentic-memory-kv?
 
@@ -116,4 +116,4 @@ Creates or attaches to a shared memory cache.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [Apache-2.0 License](LICENSE).
