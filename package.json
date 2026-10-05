@@ -12,7 +12,8 @@
   },
   "devDependencies": {
     "typescript": "^5.2.2",
-    "vitest": "^0.34.6"
+    "vitest": "^5.0.3",
+    "vite": "^8.3.2"
   },
   "exports": {
     ".": {
