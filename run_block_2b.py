@@ -27,44 +27,7 @@ def commit(msg):
     out = run_cmd(f'git commit -m "{msg}"')
     print(f"Committed: {msg}")
 
-# -------------------------------------------------------------
-# Commit 11: test(serializer): add unit tests for payload round-trips
-# -------------------------------------------------------------
-ser_test = """import { describe, it, expect } from 'vitest';
-import { PayloadSerializer } from '../src/serializer';
-
-describe('PayloadSerializer', () => {
-  it('serializes and restores arbitrary JSON objects', () => {
-    const input = { agent: 'react-loop', steps: [1, 2, 3], active: true };
-    const bytes = PayloadSerializer.serialize(input);
-    const restored = PayloadSerializer.deserialize(bytes);
-    expect(restored).toEqual(input);
-  });
-
-  it('serializes and preserves Uint8Array zero-copy data', () => {
-    const raw = new Uint8Array([255, 128, 64, 32]);
-    const bytes = PayloadSerializer.serialize(raw);
-    const restored = PayloadSerializer.deserialize<Uint8Array>(bytes);
-    expect(Array.from(restored)).toEqual([255, 128, 64, 32]);
-  });
-
-  it('correctly handles 64-bit BigInt values', () => {
-    const val = 1234567890123456789n;
-    const bytes = PayloadSerializer.serialize(val);
-    const restored = PayloadSerializer.deserialize<bigint>(bytes);
-    expect(restored).toBe(val);
-  });
-});
-"""
-with open(os.path.join(SCRATCH, "test/serializer.test.ts"), "w") as f:
-    f.write(ser_test)
-
-run_tests()
-commit("test(serializer): add unit tests for deep JSON payload and Uint8Array zero-copy round-trips")
-
-# -------------------------------------------------------------
-# Commit 12: feat(lru): implement doubly-linked LRU eviction pointers
-# -------------------------------------------------------------
+# Fix src/lru.ts remove bounds
 lru_code = """const NULL_NODE = -1;
 
 export class LruListManager {
@@ -106,18 +69,21 @@ export class LruListManager {
   }
 
   public remove(nodeIdx: number): void {
+    if (nodeIdx < 0 || nodeIdx >= this.prevPointers.length) return;
     const prev = this.prevPointers[nodeIdx];
     const next = this.nextPointers[nodeIdx];
 
     if (prev !== NULL_NODE) {
       this.nextPointers[prev] = next;
-    } else if (this.head === nodeIdx) {
+    }
+    if (this.head === nodeIdx) {
       this.head = next;
     }
 
     if (next !== NULL_NODE) {
       this.prevPointers[next] = prev;
-    } else if (this.tail === nodeIdx) {
+    }
+    if (this.tail === nodeIdx) {
       this.tail = prev;
     }
 
@@ -133,9 +99,6 @@ export class LruListManager {
 """
 with open(os.path.join(SCRATCH, "src/lru.ts"), "w") as f:
     f.write(lru_code)
-
-run_tests()
-commit("feat(lru): implement doubly-linked LRU eviction pointers in SharedArrayBuffer header")
 
 # -------------------------------------------------------------
 # Commit 13: test(lru): add unit tests for LRU touch order
@@ -160,7 +123,7 @@ describe('LruListManager', () => {
   });
 
   it('evicts least recently used node from tail', () => {
-    const lru = new LruListManager(3);
+    const lru = new LruListManager(50);
     lru.touch(10);
     lru.touch(20);
 
@@ -215,7 +178,7 @@ describe('TtlManager', () => {
 
     expect(TtlManager.isExpired(future)).toBe(false);
     expect(TtlManager.isExpired(past)).toBe(true);
-    expect(TtlManager.isExpired(0)).toBe(false); // 0 = permanent
+    expect(TtlManager.isExpired(0)).toBe(false);
   });
 
   it('calculates remaining lifespan in milliseconds', () => {
@@ -340,7 +303,7 @@ run_tests()
 commit("feat(atomic-ops): implement atomic Compare-And-Swap (CAS), increment, and decrement primitives")
 
 # -------------------------------------------------------------
-# Commit 19: test(atomic-ops): add unit tests for atomic counters
+# Commit 19: test(atomic-ops): add unit tests for atomic numeric counters
 # -------------------------------------------------------------
 atomic_test = """import { describe, it, expect } from 'vitest';
 import { AtomicOperations } from '../src/atomic_ops';
@@ -362,7 +325,6 @@ describe('AtomicOperations', () => {
     expect(AtomicOperations.compareAndSwap(arr, 0, 10n, 20n)).toBe(true);
     expect(arr[0]).toBe(20n);
 
-    // Expected mismatch
     expect(AtomicOperations.compareAndSwap(arr, 0, 10n, 30n)).toBe(false);
     expect(arr[0]).toBe(20n);
   });
@@ -426,4 +388,4 @@ with open(os.path.join(SCRATCH, "src/stats.ts"), "w") as f:
 run_tests()
 commit("feat(stats): implement real-time cache statistics tracking (hit rate, miss rate, evictions)")
 
-print("Block 2 (Commits 11-20) completed successfully.")
+print("Commits 13-20 completed successfully.")

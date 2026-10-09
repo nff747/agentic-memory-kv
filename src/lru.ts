@@ -39,18 +39,21 @@ export class LruListManager {
   }
 
   public remove(nodeIdx: number): void {
+    if (nodeIdx < 0 || nodeIdx >= this.prevPointers.length) return;
     const prev = this.prevPointers[nodeIdx];
     const next = this.nextPointers[nodeIdx];
 
     if (prev !== NULL_NODE) {
       this.nextPointers[prev] = next;
-    } else if (this.head === nodeIdx) {
+    }
+    if (this.head === nodeIdx) {
       this.head = next;
     }
 
     if (next !== NULL_NODE) {
       this.prevPointers[next] = prev;
-    } else if (this.tail === nodeIdx) {
+    }
+    if (this.tail === nodeIdx) {
       this.tail = prev;
     }
 
