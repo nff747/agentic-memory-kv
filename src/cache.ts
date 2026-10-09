@@ -1,3 +1,8 @@
+import { FutexLock } from './futex';
+import { KeyHasher } from './hash';
+import { VectorEmbeddingStore } from './embeddings';
+import { TagIndex } from './tags';
+
 export interface AgenticMemoryKVOptions {
   maxSize?: number;
   defaultTtl?: number;
@@ -25,6 +30,12 @@ export class AgenticMemoryKV {
   private header: BigInt64Array;
   private nodes: BigInt64Array;
   private capacity: number;
+  private futex: FutexLock;
+  private vectorStore: VectorEmbeddingStore = new VectorEmbeddingStore(128);
+  private tagIndex: TagIndex = new TagIndex();
+
+  // Fast O(1) hash index: maps key -> nodeIndex
+  private keyIndex: Map<bigint, number> = new Map();
 
   constructor(options: AgenticMemoryKVOptions = {}) {
     this.capacity = options.maxSize ?? 1000;
@@ -39,6 +50,13 @@ export class AgenticMemoryKV {
       this.sab = options.buffer;
       this.header = new BigInt64Array(this.sab, 0, HEADER_SIZE);
       this.nodes = new BigInt64Array(this.sab, HEADER_SIZE * 8, this.capacity * NODE_SIZE);
+      // Rebuild index
+      for (let i = 0; i < this.capacity; i++) {
+        const k = this.getNode(i, N_KEY);
+        if (k !== NULL) {
+          this.keyIndex.set(k, i);
+        }
+      }
     } else {
       this.sab = new SharedArrayBuffer(bytes);
       this.header = new BigInt64Array(this.sab, 0, HEADER_SIZE);
@@ -51,23 +69,31 @@ export class AgenticMemoryKV {
       this.header[H_DEFAULT_TTL] = BigInt(defaultTtl);
       
       for (let i = 0; i < this.capacity; i++) {
-         this.setNode(i, N_KEY, NULL);
+        this.setNode(i, N_KEY, NULL);
       }
     }
+
+    this.futex = new FutexLock(this.sab, 0);
   }
 
   get buffer(): SharedArrayBuffer {
     return this.sab;
   }
 
+  get size(): number {
+    return Number(Atomics.load(this.header, H_SIZE));
+  }
+
+  public has(key: bigint): boolean {
+    return this.get(key) !== undefined;
+  }
+
   private lock() {
-    while (Atomics.compareExchange(this.header, H_LOCK, 0n, 1n) !== 0n) {
-      // spin
-    }
+    this.futex.acquire();
   }
 
   private unlock() {
-    Atomics.store(this.header, H_LOCK, 0n);
+    this.futex.release();
   }
 
   private getNode(index: number, field: number): bigint {
@@ -79,12 +105,8 @@ export class AgenticMemoryKV {
   }
 
   private findKey(key: bigint): number {
-    for (let i = 0; i < this.capacity; i++) {
-      if (this.getNode(i, N_KEY) === key) {
-        return i;
-      }
-    }
-    return Number(NULL);
+    const idx = this.keyIndex.get(key);
+    return idx !== undefined ? idx : Number(NULL);
   }
 
   private findFree(): number {
@@ -100,138 +122,154 @@ export class AgenticMemoryKV {
     const prev = this.getNode(index, N_PREV);
     const next = this.getNode(index, N_NEXT);
 
-    if (prev !== NULL) this.setNode(Number(prev), N_NEXT, next);
-    else this.header[H_HEAD] = next;
+    if (prev !== NULL) {
+      this.setNode(Number(prev), N_NEXT, next);
+    } else {
+      this.header[H_HEAD] = next;
+    }
 
-    if (next !== NULL) this.setNode(Number(next), N_PREV, prev);
-    else this.header[H_TAIL] = prev;
-  }
+    if (next !== NULL) {
+      this.setNode(Number(next), N_PREV, prev);
+    } else {
+      this.header[H_TAIL] = prev;
+    }
 
-  private pushFront(index: number) {
-    const head = this.header[H_HEAD];
     this.setNode(index, N_PREV, NULL);
-    this.setNode(index, N_NEXT, head);
-
-    if (head !== NULL) this.setNode(Number(head), N_PREV, BigInt(index));
-    else this.header[H_TAIL] = BigInt(index);
-
-    this.header[H_HEAD] = BigInt(index);
+    this.setNode(index, N_NEXT, NULL);
   }
 
-  set(key: bigint, value: bigint, ttl?: number): void {
-    if (key === NULL) throw new Error("Invalid key");
-    this.lock();
-    try {
-      let idx = this.findKey(key);
-      let isNew = false;
-      if (idx !== Number(NULL)) {
-        this.unlink(idx);
-      } else {
-        isNew = true;
-        idx = this.findFree();
-        if (idx === Number(NULL)) {
-          // Evict tail
-          idx = Number(this.header[H_TAIL]);
-          if (idx !== Number(NULL)) {
-            this.unlink(idx);
-            this.header[H_SIZE]--;
-          }
-        }
-      }
+  private insertAtHead(index: number) {
+    const oldHead = this.header[H_HEAD];
+    this.setNode(index, N_PREV, NULL);
+    this.setNode(index, N_NEXT, oldHead);
 
-      if (idx !== Number(NULL)) {
-        this.setNode(idx, N_KEY, key);
-        this.setNode(idx, N_VALUE, value);
-        
-        const actualTtl = ttl !== undefined ? BigInt(ttl) : this.header[H_DEFAULT_TTL];
-        this.setNode(idx, N_EXPIRY, actualTtl > 0n ? BigInt(Date.now()) + actualTtl : 0n);
-        
-        this.pushFront(idx);
-        
-        if (isNew) {
-          Atomics.add(this.header, H_SIZE, 1n);
-        }
-      }
-    } finally {
-      this.unlock();
+    if (oldHead !== NULL) {
+      this.setNode(Number(oldHead), N_PREV, BigInt(index));
+    }
+    this.header[H_HEAD] = BigInt(index);
+
+    if (this.header[H_TAIL] === NULL) {
+      this.header[H_TAIL] = BigInt(index);
     }
   }
 
-  get(key: bigint): bigint | undefined {
+  private evict(): number {
+    const tail = this.header[H_TAIL];
+    if (tail === NULL) return Number(NULL);
+
+    const index = Number(tail);
+    const key = this.getNode(index, N_KEY);
+    this.keyIndex.delete(key);
+
+    this.unlink(index);
+    this.setNode(index, N_KEY, NULL);
+    this.setNode(index, N_VALUE, NULL);
+    this.setNode(index, N_EXPIRY, NULL);
+    this.header[H_SIZE] -= 1n;
+    return index;
+  }
+
+  public get(key: bigint): bigint | undefined {
     this.lock();
     try {
-      const idx = this.findKey(key);
-      if (idx === Number(NULL)) return undefined;
-
-      const expiry = this.getNode(idx, N_EXPIRY);
-      if (expiry !== 0n && BigInt(Date.now()) > expiry) {
-        this.unlink(idx);
-        this.setNode(idx, N_KEY, NULL);
-        this.header[H_SIZE]--;
+      const index = this.findKey(key);
+      if (index === Number(NULL)) {
         return undefined;
       }
 
-      this.unlink(idx);
-      this.pushFront(idx);
+      const expiry = this.getNode(index, N_EXPIRY);
+      if (expiry !== 0n && expiry <= BigInt(Date.now())) {
+        this.keyIndex.delete(key);
+        this.unlink(index);
+        this.setNode(index, N_KEY, NULL);
+        this.setNode(index, N_VALUE, NULL);
+        this.setNode(index, N_EXPIRY, NULL);
+        this.header[H_SIZE] -= 1n;
+        return undefined;
+      }
 
-      return this.getNode(idx, N_VALUE);
+      this.unlink(index);
+      this.insertAtHead(index);
+
+      return this.getNode(index, N_VALUE);
     } finally {
       this.unlock();
     }
   }
 
-  has(key: bigint): boolean {
+  public set(key: bigint, value: bigint, ttl?: number) {
     this.lock();
     try {
-      const idx = this.findKey(key);
-      if (idx === Number(NULL)) return false;
+      let index = this.findKey(key);
+      if (index !== Number(NULL)) {
+        this.setNode(index, N_VALUE, value);
+        const itemTtl = ttl !== undefined ? ttl : Number(this.header[H_DEFAULT_TTL]);
+        const expiry = itemTtl > 0 ? BigInt(Date.now() + itemTtl) : 0n;
+        this.setNode(index, N_EXPIRY, expiry);
 
-      const expiry = this.getNode(idx, N_EXPIRY);
-      if (expiry !== 0n && BigInt(Date.now()) > expiry) {
-        this.unlink(idx);
-        this.setNode(idx, N_KEY, NULL);
-        this.header[H_SIZE]--;
+        this.unlink(index);
+        this.insertAtHead(index);
+        return;
+      }
+
+      if (this.header[H_SIZE] >= BigInt(this.capacity)) {
+        index = this.evict();
+      } else {
+        index = this.findFree();
+      }
+
+      if (index === Number(NULL)) {
+        throw new Error('No available slots');
+      }
+
+      this.setNode(index, N_KEY, key);
+      this.setNode(index, N_VALUE, value);
+      const itemTtl = ttl !== undefined ? ttl : Number(this.header[H_DEFAULT_TTL]);
+      const expiry = itemTtl > 0 ? BigInt(Date.now() + itemTtl) : 0n;
+      this.setNode(index, N_EXPIRY, expiry);
+
+      this.keyIndex.set(key, index);
+      this.insertAtHead(index);
+      this.header[H_SIZE] += 1n;
+    } finally {
+      this.unlock();
+    }
+  }
+
+  public delete(key: bigint): boolean {
+    this.lock();
+    try {
+      const index = this.findKey(key);
+      if (index === Number(NULL)) {
         return false;
       }
+
+      this.keyIndex.delete(key);
+      this.unlink(index);
+      this.setNode(index, N_KEY, NULL);
+      this.setNode(index, N_VALUE, NULL);
+      this.setNode(index, N_EXPIRY, NULL);
+      this.header[H_SIZE] -= 1n;
       return true;
     } finally {
       this.unlock();
     }
   }
 
-  delete(key: bigint): boolean {
-    this.lock();
-    try {
-      const idx = this.findKey(key);
-      if (idx === Number(NULL)) return false;
-
-      this.unlink(idx);
-      this.setNode(idx, N_KEY, NULL);
-      this.header[H_SIZE]--;
-      return true;
-    } finally {
-      this.unlock();
-    }
-  }
-
-  clear(): void {
+  public clear() {
     this.lock();
     try {
       this.header[H_SIZE] = 0n;
       this.header[H_HEAD] = NULL;
       this.header[H_TAIL] = NULL;
+      this.keyIndex.clear();
       for (let i = 0; i < this.capacity; i++) {
         this.setNode(i, N_KEY, NULL);
+        this.setNode(i, N_VALUE, NULL);
+        this.setNode(i, N_EXPIRY, NULL);
+        this.setNode(i, N_PREV, NULL);
+        this.setNode(i, N_NEXT, NULL);
       }
-    } finally {
-      this.unlock();
-    }
-  }
-
-  get size(): number {
-    this.lock();
-    try {
-      return Number(this.header[H_SIZE]);
     } finally {
       this.unlock();
     }
