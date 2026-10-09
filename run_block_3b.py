@@ -28,82 +28,6 @@ def commit(msg):
     print(f"Committed: {msg}")
 
 # -------------------------------------------------------------
-# Commit 21: test(stats): add unit tests for cache telemetry
-# -------------------------------------------------------------
-stats_test = """import { describe, it, expect } from 'vitest';
-import { CacheStatsCollector } from '../src/stats';
-
-describe('CacheStatsCollector', () => {
-  it('calculates hit rate and operation counters accurately', () => {
-    const collector = new CacheStatsCollector();
-    collector.recordHit();
-    collector.recordHit();
-    collector.recordHit();
-    collector.recordMiss();
-
-    const metrics = collector.getMetrics();
-    expect(metrics.hits).toBe(3);
-    expect(metrics.misses).toBe(1);
-    expect(metrics.hitRate).toBe(0.75);
-  });
-
-  it('resets all metrics to clean zero state', () => {
-    const collector = new CacheStatsCollector();
-    collector.recordHit();
-    collector.recordEviction();
-    collector.reset();
-
-    const metrics = collector.getMetrics();
-    expect(metrics.hits).toBe(0);
-    expect(metrics.evictions).toBe(0);
-    expect(metrics.hitRate).toBe(1.0);
-  });
-});
-"""
-with open(os.path.join(SCRATCH, "test/stats.test.ts"), "w") as f:
-    f.write(stats_test)
-
-run_tests()
-commit("test(stats): add unit tests for cache telemetry, memory footprint, and hit-rate accuracy")
-
-# -------------------------------------------------------------
-# Commit 22: feat(embeddings): implement vector embedding buffer storage
-# -------------------------------------------------------------
-embed_code = """export class VectorEmbeddingStore {
-  private dimension: number;
-  private vectors: Map<string, Float32Array> = new Map();
-
-  constructor(dimension: number = 384) {
-    this.dimension = dimension;
-  }
-
-  public setVector(key: string, vector: Float32Array): void {
-    if (vector.length !== this.dimension) {
-      throw new Error(`Vector dimension mismatch. Expected ${this.dimension}, got ${vector.length}`);
-    }
-    this.vectors.set(key, new Float32Array(vector));
-  }
-
-  public getVector(key: string): Float32Array | null {
-    return this.vectors.get(key) || null;
-  }
-
-  public removeVector(key: string): boolean {
-    return this.vectors.delete(key);
-  }
-
-  public getDimension(): number { return this.dimension; }
-  public count(): number { return this.vectors.size; }
-  public entries(): [string, Float32Array][] { return Array.from(this.vectors.entries()); }
-}
-"""
-with open(os.path.join(SCRATCH, "src/embeddings.ts"), "w") as f:
-    f.write(embed_code)
-
-run_tests()
-commit("feat(embeddings): implement vector embedding buffer storage for dense semantic vectors")
-
-# -------------------------------------------------------------
 # Commit 23: test(embeddings): add unit tests for vector storage
 # -------------------------------------------------------------
 embed_test = """import { describe, it, expect } from 'vitest';
@@ -117,7 +41,10 @@ describe('VectorEmbeddingStore', () => {
 
     const retrieved = store.getVector('mem_1');
     expect(retrieved).not.toBeNull();
-    expect(Array.from(retrieved!)).toEqual([0.1, 0.2, 0.3, 0.4]);
+    expect(retrieved![0]).toBeCloseTo(0.1, 5);
+    expect(retrieved![1]).toBeCloseTo(0.2, 5);
+    expect(retrieved![2]).toBeCloseTo(0.3, 5);
+    expect(retrieved![3]).toBeCloseTo(0.4, 5);
   });
 
   it('rejects dimension mismatched vectors', () => {
@@ -417,4 +344,4 @@ with open(os.path.join(SCRATCH, "src/transaction.ts"), "w") as f:
 run_tests()
 commit("feat(transactions): implement multi-key atomic transactions with rollback capability")
 
-print("Block 3 (Commits 21-30) completed successfully.")
+print("Commits 23-30 completed successfully.")
