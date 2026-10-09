@@ -17,9 +17,8 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     }
   },
   "author": "nff747 <https://github.com/nff747>",
@@ -28,5 +27,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/nff747/agentic-memory-kv.git"
+  },
+  "bin": {
+    "agentic-kv": "./bin/agentic-kv.js"
   }
 }
