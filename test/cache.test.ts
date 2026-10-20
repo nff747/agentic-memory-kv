@@ -89,4 +89,17 @@ describe('AgenticMemoryKV', () => {
     expect(cache.has(1n)).toBe(false);
     expect(cache.delete(1n)).toBe(false);
   });
+
+  it('performs atomic multi-key mset and mget operations', () => {
+    const cache = new AgenticMemoryKV();
+    cache.mset([
+      [10n, 100n],
+      [20n, 200n],
+      [30n, 300n]
+    ]);
+
+    expect(cache.size).toBe(3);
+    const results = cache.mget([10n, 99n, 30n]);
+    expect(results).toEqual([100n, undefined, 300n]);
+  });
 });

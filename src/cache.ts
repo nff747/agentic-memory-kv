@@ -274,4 +274,78 @@ export class AgenticMemoryKV {
       this.unlock();
     }
   }
+
+  public mget(keys: bigint[]): (bigint | undefined)[] {
+    this.lock();
+    try {
+      const results: (bigint | undefined)[] = [];
+      for (const key of keys) {
+        const index = this.findKey(key);
+        if (index === Number(NULL)) {
+          results.push(undefined);
+          continue;
+        }
+
+        const expiry = this.getNode(index, N_EXPIRY);
+        if (expiry !== 0n && expiry <= BigInt(Date.now())) {
+          this.keyIndex.delete(key);
+          this.unlink(index);
+          this.setNode(index, N_KEY, NULL);
+          this.setNode(index, N_VALUE, NULL);
+          this.setNode(index, N_EXPIRY, NULL);
+          this.header[H_SIZE] -= 1n;
+          results.push(undefined);
+          continue;
+        }
+
+        this.unlink(index);
+        this.insertAtHead(index);
+        results.push(this.getNode(index, N_VALUE));
+      }
+      return results;
+    } finally {
+      this.unlock();
+    }
+  }
+
+  public mset(entries: [bigint, bigint, number?][]): void {
+    this.lock();
+    try {
+      for (const [key, value, ttl] of entries) {
+        let index = this.findKey(key);
+        if (index !== Number(NULL)) {
+          this.setNode(index, N_VALUE, value);
+          const itemTtl = ttl !== undefined ? ttl : Number(this.header[H_DEFAULT_TTL]);
+          const expiry = itemTtl > 0 ? BigInt(Date.now() + itemTtl) : 0n;
+          this.setNode(index, N_EXPIRY, expiry);
+
+          this.unlink(index);
+          this.insertAtHead(index);
+          continue;
+        }
+
+        if (this.header[H_SIZE] >= BigInt(this.capacity)) {
+          index = this.evict();
+        } else {
+          index = this.findFree();
+        }
+
+        if (index === Number(NULL)) {
+          throw new Error('No available slots');
+        }
+
+        this.setNode(index, N_KEY, key);
+        this.setNode(index, N_VALUE, value);
+        const itemTtl = ttl !== undefined ? ttl : Number(this.header[H_DEFAULT_TTL]);
+        const expiry = itemTtl > 0 ? BigInt(Date.now() + itemTtl) : 0n;
+        this.setNode(index, N_EXPIRY, expiry);
+
+        this.keyIndex.set(key, index);
+        this.insertAtHead(index);
+        this.header[H_SIZE] += 1n;
+      }
+    } finally {
+      this.unlock();
+    }
+  }
 }
