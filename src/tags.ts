@@ -31,7 +31,13 @@ export class TagIndex {
       if (!result) {
         result = new Set(keys);
       } else {
-        result = new Set(Array.from(result).filter(k => keys.has(k)));
+        const intersection = new Set<string>();
+        for (const k of result) {
+          if (keys.has(k)) {
+            intersection.add(k);
+          }
+        }
+        result = intersection;
       }
     }
     return result ? Array.from(result) : [];
