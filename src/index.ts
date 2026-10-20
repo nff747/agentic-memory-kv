@@ -23,3 +23,4 @@ export * from './middleware';
 export * from './cli';
 export * from './benchmarks';
 export * from './cache';
+export * from './pattern';
