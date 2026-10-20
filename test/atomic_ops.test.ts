@@ -22,3 +22,29 @@ describe('AtomicOperations', () => {
     expect(arr[0]).toBe(20n);
   });
 });
+
+describe('AtomicOperations Clamped Bounds', () => {
+  it('clamps increment within upper limit', () => {
+    const sab = new SharedArrayBuffer(16);
+    const arr = new BigInt64Array(sab);
+    arr[0] = 95n;
+
+    expect(AtomicOperations.incrementClamped(arr, 0, 10n, 0n, 100n)).toBe(100n);
+    expect(arr[0]).toBe(100n);
+    // Further increment stays clamped
+    expect(AtomicOperations.incrementClamped(arr, 0, 5n, 0n, 100n)).toBe(100n);
+    expect(arr[0]).toBe(100n);
+  });
+
+  it('clamps decrement within lower limit', () => {
+    const sab = new SharedArrayBuffer(16);
+    const arr = new BigInt64Array(sab);
+    arr[0] = 5n;
+
+    expect(AtomicOperations.decrementClamped(arr, 0, 10n, 0n, 100n)).toBe(0n);
+    expect(arr[0]).toBe(0n);
+    // Further decrement stays clamped
+    expect(AtomicOperations.decrementClamped(arr, 0, 1n, 0n, 100n)).toBe(0n);
+    expect(arr[0]).toBe(0n);
+  });
+});
