@@ -1,4 +1,4 @@
-import { TtlManager } from './ttl';
+import { TtlManager } from './ttl.js';
 
 export interface ReaperTarget {
   checkAndExpireSlot: (index: number) => boolean;

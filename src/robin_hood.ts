@@ -1,4 +1,4 @@
-import { KeyHasher } from './hash';
+import { KeyHasher } from './hash.js';
 
 const SLOT_FIELDS = 4;
 const F_HASH = 0;

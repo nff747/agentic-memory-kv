@@ -5,9 +5,8 @@ export function runCLI(argv: string[]): number {
   switch (command) {
     case 'stats': {
       console.log(JSON.stringify({
-        status: 'healthy',
-        engine: 'RobinHoodHashTable + Futex',
-        version: '1.0.0'
+        status: 'no live store connected',
+        version: '2.0.0-alpha.0'
       }, null, 2));
       return 0;
     }

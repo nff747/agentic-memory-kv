@@ -1,4 +1,4 @@
-import { KeyHasher } from './hash';
+import { KeyHasher } from './hash.js';
 
 export function runMicroBenchmark(iterations: number = 50000): {
   opsPerSec: number;

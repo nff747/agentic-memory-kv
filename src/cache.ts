@@ -1,7 +1,7 @@
-import { FutexLock } from './futex';
-import { KeyHasher } from './hash';
-import { VectorEmbeddingStore } from './embeddings';
-import { TagIndex } from './tags';
+import { FutexLock } from './futex.js';
+import { KeyHasher } from './hash.js';
+import { VectorEmbeddingStore } from './embeddings.js';
+import { TagIndex } from './tags.js';
 
 export interface AgenticMemoryKVOptions {
   maxSize?: number;
@@ -24,6 +24,18 @@ const N_VALUE = 3;
 const N_EXPIRY = 4;
 
 const NULL = -1n;
+const MIN_I64 = -(1n << 63n);
+const MAX_I64 = (1n << 63n) - 1n;
+
+function assertKey(key: bigint): void {
+  if (typeof key !== 'bigint' || key < MIN_I64 || key > MAX_I64 || key === NULL) throw new Error('key must be a signed 64-bit bigint other than -1');
+}
+function assertValue(value: bigint): void {
+  if (typeof value !== 'bigint' || value < MIN_I64 || value > MAX_I64) throw new Error('value must be a signed 64-bit bigint');
+}
+function assertTtl(ttl: number | undefined): void {
+  if (ttl !== undefined && (!Number.isSafeInteger(ttl) || ttl < 0 || ttl > Number.MAX_SAFE_INTEGER - Date.now())) throw new Error('ttl must be a non-negative safe integer in milliseconds');
+}
 
 export class AgenticMemoryKV {
   private sab: SharedArrayBuffer;
@@ -41,22 +53,17 @@ export class AgenticMemoryKV {
     this.capacity = options.maxSize ?? 1000;
     const defaultTtl = options.defaultTtl ?? 0;
 
-    if (this.capacity <= 0) throw new Error('maxSize must be greater than 0');
-    if (defaultTtl < 0) throw new Error('defaultTtl cannot be negative');
+    if (!Number.isSafeInteger(this.capacity) || this.capacity <= 0) throw new Error('maxSize must be a positive integer');
+    assertTtl(defaultTtl);
 
     const bytes = (HEADER_SIZE + this.capacity * NODE_SIZE) * 8;
     
     if (options.buffer) {
+      if (options.buffer.byteLength !== bytes) throw new Error('buffer size does not match maxSize');
       this.sab = options.buffer;
       this.header = new BigInt64Array(this.sab, 0, HEADER_SIZE);
       this.nodes = new BigInt64Array(this.sab, HEADER_SIZE * 8, this.capacity * NODE_SIZE);
-      // Rebuild index
-      for (let i = 0; i < this.capacity; i++) {
-        const k = this.getNode(i, N_KEY);
-        if (k !== NULL) {
-          this.keyIndex.set(k, i);
-        }
-      }
+      // Rebuild lazily under the shared lock on first lookup.
     } else {
       this.sab = new SharedArrayBuffer(bytes);
       this.header = new BigInt64Array(this.sab, 0, HEADER_SIZE);
@@ -106,7 +113,17 @@ export class AgenticMemoryKV {
 
   private findKey(key: bigint): number {
     const idx = this.keyIndex.get(key);
-    return idx !== undefined ? idx : Number(NULL);
+    // The Map belongs to this instance, while nodes are shared across all
+    // instances. Another worker can insert, delete or evict between calls.
+    if (idx !== undefined && this.getNode(idx, N_KEY) === key) return idx;
+    this.keyIndex.delete(key);
+    for (let i = 0; i < this.capacity; i++) {
+      if (this.getNode(i, N_KEY) === key) {
+        this.keyIndex.set(key, i);
+        return i;
+      }
+    }
+    return Number(NULL);
   }
 
   private findFree(): number {
@@ -170,6 +187,7 @@ export class AgenticMemoryKV {
   }
 
   public get(key: bigint): bigint | undefined {
+    assertKey(key);
     this.lock();
     try {
       const index = this.findKey(key);
@@ -198,6 +216,9 @@ export class AgenticMemoryKV {
   }
 
   public set(key: bigint, value: bigint, ttl?: number) {
+    assertKey(key);
+    assertValue(value);
+    assertTtl(ttl);
     this.lock();
     try {
       let index = this.findKey(key);
@@ -237,6 +258,7 @@ export class AgenticMemoryKV {
   }
 
   public delete(key: bigint): boolean {
+    assertKey(key);
     this.lock();
     try {
       const index = this.findKey(key);
@@ -276,6 +298,7 @@ export class AgenticMemoryKV {
   }
 
   public mget(keys: bigint[]): (bigint | undefined)[] {
+    keys.forEach(assertKey);
     this.lock();
     try {
       const results: (bigint | undefined)[] = [];
@@ -309,6 +332,7 @@ export class AgenticMemoryKV {
   }
 
   public mset(entries: [bigint, bigint, number?][]): void {
+    for (const [key, value, ttl] of entries) { assertKey(key); assertValue(value); assertTtl(ttl); }
     this.lock();
     try {
       for (const [key, value, ttl] of entries) {

@@ -1,4 +1,4 @@
-import { KeyHasher } from './hash';
+import { KeyHasher } from './hash.js';
 
 export class BloomFilter {
   private bits: Uint8Array;

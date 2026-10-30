@@ -1,4 +1,4 @@
-import { SlabStats } from './types';
+import { SlabStats } from './types.js';
 
 export class SlabArena {
   private bytes: Uint8Array;

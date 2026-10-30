@@ -1,4 +1,4 @@
-import { FutexOptions } from './types';
+import { FutexOptions } from './types.js';
 
 export class FutexLock {
   private state: Int32Array;
@@ -33,8 +33,8 @@ export class FutexLock {
         // Atomics.wait sleeps the thread until notified or timeout
         Atomics.wait(this.state, this.lockIndex, 1, this.timeoutMs);
       } catch {
-        // Fallback for environments where Atomics.wait is prohibited on main thread
-        break;
+        // Never enter a critical section without owning the lock.
+        throw new Error('Cannot wait for shared lock in this environment');
       }
     }
   }

@@ -71,7 +71,7 @@ describe('AgenticMemoryKV', () => {
   });
 
   it('should throw an error for invalid max size', () => {
-    expect(() => new AgenticMemoryKV({ maxSize: 0 })).toThrow('maxSize must be greater than 0');
+    expect(() => new AgenticMemoryKV({ maxSize: 0 })).toThrow('maxSize must be a positive integer');
   });
   
   it('should clear all items', () => {

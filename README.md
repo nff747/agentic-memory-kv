@@ -1,49 +1,20 @@
-# 🧠 agentic-memory-kv
+# agentic-memory-kv
 
-> **Ultra-high-throughput, zero-copy, SharedArrayBuffer-backed distributed Key-Value and Vector memory engine for multi-agent AI systems.**
+Experimental JavaScript shared-memory and in-memory data structure components. This package is not a distributed database, durable storage system, or production-ready agent memory service. It has not been independently security audited or verified across browsers and edge runtimes.
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-100%25_Passing-brightgreen.svg)]()
-[![Throughput](https://img.shields.io/badge/Throughput-%3E1M_ops%2Fsec-blueviolet.svg)]()
+`AgenticMemoryKV` stores signed 64-bit bigint keys and values in a `SharedArrayBuffer`. The key `-1n` is reserved. Instances attaching to the same buffer must use the same `maxSize`. TTL is in milliseconds; `0` means no expiry. Under a shared lock, lookups validate their local index and fall back to a linear scan when another instance changes the buffer. This can be O(n), especially for misses.
 
----
-
-## ⚡ The Problem
-When running multi-agent AI loops (e.g. ReAct loops, swarm architectures, multi-worker browser agents), sharing context and memory across worker threads is painfully slow. Traditional solutions rely on slow structured cloning (`postMessage`), Redis network roundtrips, or flawed spinlocks that burn 100% CPU on worker cores while suffering from $O(N)$ linear scanning.
-
-## 🛡️ The Solution
-`agentic-memory-kv` delivers native C-like shared memory in JavaScript:
-1. **$O(1)$ Open-Addressing Robin Hood Hash Table**: Direct binary slot probing inside `SharedArrayBuffer` replacing linear scans.
-2. **Futex Synchronization (`Atomics.wait` & `Atomics.notify`)**: Adaptive backoff eliminating busy-wait spinlocks and freeing CPU cores.
-3. **Zero-Copy Slab Arena**: Allocates arbitrary JSON, strings, and binary vectors without garbage collection churn.
-4. **Vector Embeddings & Cosine Search**: Built-in vector store with SIMD-friendly nearest-neighbor retrieval.
-5. **Multi-Key Atomic Transactions**: Atomic commits with automatic rollback.
-6. **Multi-Tenant Namespaces & Tag Indexing**: Associative memory tagging for agent conversation history.
-
----
-
-## 🚀 Quick Start
-
-```typescript
+```ts
 import { AgenticMemoryKV } from 'agentic-memory-kv';
-
-// Initialize with SharedArrayBuffer
-const memory = new AgenticMemoryKV({ maxSize: 10000, defaultTtl: 30000 });
-
-// Store and retrieve in microsecond time
+const memory = new AgenticMemoryKV({ maxSize: 1000, defaultTtl: 30_000 });
 memory.set(100n, 4200n);
-const val = memory.get(100n); // 4200n
+console.log(memory.get(100n));
 ```
 
----
+Shared memory requires a runtime that supports `SharedArrayBuffer` and atomics. A contended lock cannot be acquired when `Atomics.wait` is unavailable; the operation throws rather than continuing without a lock. A worker terminating while holding the lock has no recovery mechanism. Test your target platform and worker lifecycle before using it.
 
-## 🧪 Testing & Verification
-```bash
-npm test
-# All 25 test suites and 50+ unit tests passing in < 300ms
-```
+The other exported components are independent utilities, not automatically integrated database features. In particular, `MemoryTransaction` records operations and does not atomically apply or roll them back; `WriteAheadLog` stores records in memory and is not durable. Snapshot and some other helpers rely on Node APIs. Do not assume that all exports work in a browser or edge runtime, or that memory, tags and vector indexes are shared between workers.
 
----
+Build and test with `npm install`, `npm run build` and `npm test`. The CLI's `stats` command reports that it is not connected to a live store; it does not inspect a running service.
 
-## 📄 License
-Licensed under the [Apache License, Version 2.0](LICENSE).
+[Apache License 2.0](LICENSE).
