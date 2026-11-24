@@ -21,7 +21,7 @@
       "import": "./dist/index.js"
     }
   },
-  "author": "Lunar Paradox <hello@lunarparadox.com>",
+  "author": "Lunar Paradox",
   "homepage": "https://lunarparadox.com",
   "funding": "https://github.com/nff747",
   "repository": {
