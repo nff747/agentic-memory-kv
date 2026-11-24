@@ -1,5 +1,7 @@
 # agentic-memory-kv
 
+[![Lunar Paradox](https://img.shields.io/badge/Organization-Lunar_Paradox-0a0e1a?style=for-the-badge&logo=probot&logoColor=d7b886)](https://lunarparadox.com)
+
 Experimental JavaScript shared-memory and in-memory data structure components. This package is not a distributed database, durable storage system, or production-ready agent memory service. It has not been independently security audited or verified across browsers and edge runtimes.
 
 `AgenticMemoryKV` stores signed 64-bit bigint keys and values in a `SharedArrayBuffer`. The key `-1n` is reserved. Instances attaching to the same buffer must use the same `maxSize`. TTL is in milliseconds; `0` means no expiry. Under a shared lock, lookups validate their local index and fall back to a linear scan when another instance changes the buffer. This can be O(n), especially for misses.
@@ -18,3 +20,7 @@ The other exported components are independent utilities, not automatically integ
 Build and test with `npm install`, `npm run build` and `npm test`. The CLI's `stats` command reports that it is not connected to a live store; it does not inspect a running service.
 
 [Apache License 2.0](LICENSE).
+
+---
+
+*A component of the [Lunar Paradox](https://lunarparadox.com) applied systems & graphics laboratory. Engineered by nff747.*
